@@ -52,7 +52,7 @@ def should_reset_date_params():
     return RESET_ORCHESTRATION == "true"
 
 async def transfer_abnormal_data_to_sentinel(stored_threats_datetime,stored_cases_datetime, current_datetime, context):
-    threats_date_filter = {"gte_datetime": stored_threats_datetime, "lte_datetime": current_datetime}
+    threats_date_filter = {"gte_datetime": "2024-06-25T14:25:00Z", "lte_datetime": "2024-06-25T14:30:00Z"}
     cases_date_filter = {"gte_datetime": stored_cases_datetime, "lte_datetime": current_datetime}
     queue = asyncio.Queue()
     api_connector = AbnormalSoarConnectorAsync(API_TOKEN)
