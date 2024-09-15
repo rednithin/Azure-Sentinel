@@ -10,11 +10,13 @@ import logging
 import asyncio
 import os
 import re
+import utils
 
 import azure.durable_functions as df
 
 from .soar_connector_async import AbnormalSoarConnectorAsync
 from .sentinel_connector_async import AzureSentinelConnectorAsync
+from .soar_connector_async_v2 import AbnormalThreatsAPI, AbnormalCaseAPI
 
 RESET_ORCHESTRATION = os.environ.get("RESET_OPERATION", "false")
 PERSIST_TO_SENTINEL = os.environ.get("PERSIST_TO_SENTINEL", "true")
@@ -44,12 +46,29 @@ def orchestrator_function(context: df.DurableOrchestrationContext):
     logging.info(f"Retrieved stored cases datetime: {stored_cases_datetime}")
 
     current_datetime = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
-    
+
+    if should_use_v2_logic():
+        logging.info("Using v2 fetching logic which accounts for Eventual consistentcy")
+        asyncio.run(
+            fetch_and_store_abnormal_data_v2(
+                context,
+                stored_threats_datetime,
+                stored_cases_datetime,
+                current_datetime,
+            )
+        )
+        logging.info("V2 orchestration finished")
+        return
+
     asyncio.run(transfer_abnormal_data_to_sentinel(stored_threats_datetime, stored_cases_datetime, current_datetime, context))
     logging.info("Orchestrator execution finished") 
     
 def should_reset_date_params():
     return RESET_ORCHESTRATION == "true"
+
+def should_use_v2_logic() -> bool:
+    return bool(os.environ.get("SHOULD_USE_V2_LOGIC"))
+
 
 async def transfer_abnormal_data_to_sentinel(stored_threats_datetime,stored_cases_datetime, current_datetime, context):
     threats_date_filter = {"gte_datetime": stored_threats_datetime, "lte_datetime": current_datetime}
@@ -82,5 +101,58 @@ async def consume(sentinel_connector, queue):
         except Exception as e:
             logging.error(f"Sentinel send request Failed. Err: {e}")
         queue.task_done()
+
+async def fetch_and_store_abnormal_data_v2(
+    context: df.DurableOrchestrationContext,
+    stored_threats_datetime: str,
+    stored_cases_datetime: str,
+):
+    current_time = datetime.datetime.now()
+    stored_threats_time = utils.try_str_to_datetime(stored_threats_datetime)
+    stored_cases_time = utils.try_str_to_datetime(stored_cases_datetime)
+
+    logging.info(
+        "Current timestamps",
+        stored_threats_time=stored_threats_time,
+        stored_cases_time=stored_cases_time,
+        current_time=current_time,
+    )
+
+    queue = asyncio.Queue()
+    threats_api = AbnormalThreatsAPI(API_TOKEN)
+    case_api = AbnormalCaseAPI(API_TOKEN)
+
+    threat_message_producer = asyncio.create_task(
+        threats_api.get_all_threat_messages(
+            threats_date_filter=utils.TimeRange(
+                start=stored_threats_datetime, end=current_time
+            ),
+            output_queue=queue,
+        )
+    )
+    cases_producer = asyncio.create_task(
+        case_api.get_all_cases(
+            cases_date_filter=utils.TimeRange(
+                start=stored_cases_datetime, end=current_time
+            ),
+            output_queue=queue,
+        )
+    )
+    await asyncio.gather(threat_message_producer, cases_producer)
+
+    if should_persist_data_to_sentinel():
+        logging.info("Persisting to sentinel")
+        sentinel_connector = AzureSentinelConnectorAsync(
+            LOG_ANALYTICS_URI, SENTINEL_WORKSPACE_ID, SENTINEL_SHARED_KEY
+        )
+        consumers = [
+            asyncio.create_task(consume(sentinel_connector, queue)) for _ in range(3)
+        ]
+        await queue.join()  # Implicitly awaits consumers, too
+        await asyncio.gather(**consumers)
+        for c in consumers:
+            c.cancel()
+        await sentinel_connector.flushall()
+
 
 main = df.Orchestrator.create(orchestrator_function)
