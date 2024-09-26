@@ -263,7 +263,7 @@ if __name__ == "__main__":
             asyncio.run(get_threats(ctx=ctx, output_queue=output_queue))
 
             stored_time = ctx.CURRENT_TIME
-            logging.info(f"Sleeping for {ctx.FREQUENCY.total_seconds()} seconds")
+            logging.info(f"Sleeping for {ctx.FREQUENCY.total_seconds()} seconds\n\n")
             time.sleep(ctx.FREQUENCY.total_seconds())
 
     except KeyboardInterrupt:
