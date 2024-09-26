@@ -199,7 +199,7 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
             for interval in intervals
         ]
     )
-    threat_ids = list(set(itertools.chain(*campaign_result)))
+    threat_ids = list(set(list(itertools.chain(*campaign_result))))
 
     single_result = await asyncio.gather(
         *[
@@ -207,7 +207,7 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
             for threat_id in threat_ids
         ]
     )
-    messages = list(set(itertools.chain(*single_result)))
+    messages = list(set(list(itertools.chain(*single_result))))
 
     for message in messages:
         record = (MAP_RESOURCE_TO_LOGTYPE[Resource.threats], json.loads(message))
@@ -226,7 +226,7 @@ async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
     result = await asyncio.gather(
         *[call_cases_endpoint(ctx=ctx, interval=interval) for interval in intervals]
     )
-    case_ids = list(set(itertools.chain(*result)))
+    case_ids = list(set(list(itertools.chain(*result))))
 
     cases = await asyncio.gather(
         *[call_single_case_endpoint(ctx=ctx, case_id=case_id) for case_id in case_ids]
