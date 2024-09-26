@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from enum import Enum
 from typing import List, Optional
 import os
-import uuid
+from uuid import uuid4, UUID
 from pydantic import BaseModel, model_validator
 
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -57,7 +57,7 @@ class Context(BaseModel):
     CLIENT_FILTER_TIME_RANGE: TimeRange
     STORED_TIME: datetime
     CURRENT_TIME: datetime
-    TRACE_ID: uuid
+    TRACE_ID: UUID
 
 class Resource(Enum):
     threats = 0
@@ -154,5 +154,5 @@ def get_context(stored_date_time: str) -> Context:
         STORED_TIME=STORED_TIME,
         CURRENT_TIME=CURRENT_TIME,
         LIMIT=LIMIT,
-        TRACE_ID=uuid.uuid4(),
+        TRACE_ID=uuid4(),
     )
