@@ -91,111 +91,123 @@ async def fetch_with_retries(url, retries=3, backoff=1, timeout=10, headers=None
 
 
 async def call_threat_campaigns_endpoint(
-    ctx: Context, interval: OptionalEndTimeRange
+    ctx: Context, interval: OptionalEndTimeRange, semaphore: asyncio.Semaphore
 ) -> List[str]:
-    params = get_query_params(
-        filter_param=FilterParam.latestTimeRemediated, interval=interval
-    )
-
-    threat_campaigns = set()
-
-    nextPageNumber = 1
-    while nextPageNumber:
-        params["pageNumber"] = nextPageNumber
-        endpoint = compute_url(ctx.BASE_URL, "/threats", params)
-        headers = get_headers(ctx)
-
-        response = await fetch_with_retries(url=endpoint, headers=headers)
-        total = response["total"]
-        assert total >= 0
-
-        threat_campaigns.update(
-            [threat["threatId"] for threat in response.get("threats", [])]
+    async with semaphore:
+        params = get_query_params(
+            filter_param=FilterParam.latestTimeRemediated, interval=interval
         )
 
-        nextPageNumber = response.get("nextPageNumber")
-        assert nextPageNumber is None or nextPageNumber > 0
+        threat_campaigns = set()
 
-        if nextPageNumber is None or nextPageNumber > ctx.MAX_PAGE_NUMBER:
-            break
+        nextPageNumber = 1
+        while nextPageNumber:
+            params["pageNumber"] = nextPageNumber
+            endpoint = compute_url(ctx.BASE_URL, "/threats", params)
+            headers = get_headers(ctx)
 
-    return list(threat_campaigns)
+            response = await fetch_with_retries(url=endpoint, headers=headers)
+            total = response["total"]
+            assert total >= 0
+
+            threat_campaigns.update(
+                [threat["threatId"] for threat in response.get("threats", [])]
+            )
+
+            nextPageNumber = response.get("nextPageNumber")
+            assert nextPageNumber is None or nextPageNumber > 0
+
+            if nextPageNumber is None or nextPageNumber > ctx.MAX_PAGE_NUMBER:
+                break
+
+        return list(threat_campaigns)
 
 
 async def call_cases_endpoint(
-    ctx: Context, interval: OptionalEndTimeRange
+    ctx: Context, interval: OptionalEndTimeRange, semaphore: asyncio.Semaphore
 ) -> List[str]:
-    params = get_query_params(
-        filter_param=FilterParam.customerVisibleTime, interval=interval
-    )
+    async with semaphore:
+        params = get_query_params(
+            filter_param=FilterParam.customerVisibleTime, interval=interval
+        )
 
-    case_ids = set()
+        case_ids = set()
 
-    nextPageNumber = 1
-    while nextPageNumber:
-        params["pageNumber"] = nextPageNumber
-        endpoint = compute_url(ctx.BASE_URL, "/cases", params)
-        headers = get_headers(ctx)
+        nextPageNumber = 1
+        while nextPageNumber:
+            params["pageNumber"] = nextPageNumber
+            endpoint = compute_url(ctx.BASE_URL, "/cases", params)
+            headers = get_headers(ctx)
 
-        response = await fetch_with_retries(url=endpoint, headers=headers)
-        total = response["total"]
-        assert total >= 0
+            response = await fetch_with_retries(url=endpoint, headers=headers)
+            total = response["total"]
+            assert total >= 0
 
-        case_ids.update([case["caseId"] for case in response.get("cases", [])])
+            case_ids.update([case["caseId"] for case in response.get("cases", [])])
 
-        nextPageNumber = response.get("nextPageNumber")
-        assert nextPageNumber is None or nextPageNumber > 0
+            nextPageNumber = response.get("nextPageNumber")
+            assert nextPageNumber is None or nextPageNumber > 0
 
-        if nextPageNumber is None or nextPageNumber > ctx.MAX_PAGE_NUMBER:
-            break
+            if nextPageNumber is None or nextPageNumber > ctx.MAX_PAGE_NUMBER:
+                break
 
-    return list(case_ids)
+        return list(case_ids)
 
 
 async def call_single_threat_endpoint(
-    ctx: Context, threat_id: str
+    ctx: Context, threat_id: str, semaphore: asyncio.Semaphore
 ) -> List[Dict[str, str]]:
-    endpoint = compute_url(ctx.BASE_URL, f"/threats/{threat_id}", params={})
-    headers = get_headers(ctx)
+    async with semaphore:
+        endpoint = compute_url(ctx.BASE_URL, f"/threats/{threat_id}", params={})
+        headers = get_headers(ctx)
 
-    response = await fetch_with_retries(url=endpoint, headers=headers)
+        response = await fetch_with_retries(url=endpoint, headers=headers)
 
-    filtered_messages = []
-    for message in response["messages"]:
-        message_id = message["abxMessageId"]
-        remediation_time_str = message["remediationTimestamp"]
+        filtered_messages = []
+        for message in response["messages"]:
+            message_id = message["abxMessageId"]
+            remediation_time_str = message["remediationTimestamp"]
 
-        remediation_time = try_str_to_datetime(remediation_time_str)
-        if (
-            remediation_time >= ctx.CLIENT_FILTER_TIME_RANGE.start
-            and remediation_time < ctx.CLIENT_FILTER_TIME_RANGE.end
-        ):
-            filtered_messages.append(json.dumps(message, sort_keys=True))
-            logging.debug(f"Successfully processed threat message: {message_id}")
-        else:
-            logging.debug(f"Skipped processing threat message: {message_id}")
+            remediation_time = try_str_to_datetime(remediation_time_str)
+            if (
+                remediation_time >= ctx.CLIENT_FILTER_TIME_RANGE.start
+                and remediation_time < ctx.CLIENT_FILTER_TIME_RANGE.end
+            ):
+                filtered_messages.append(json.dumps(message, sort_keys=True))
+                logging.debug(f"Successfully processed threat message: {message_id}")
+            else:
+                logging.debug(f"Skipped processing threat message: {message_id}")
 
-    return filtered_messages
+        return filtered_messages
 
 
-async def call_single_case_endpoint(ctx: Context, case_id: str) -> List[Dict[str, str]]:
-    endpoint = compute_url(ctx.BASE_URL, f"/cases/{case_id}", params={})
-    headers = get_headers(ctx)
+async def call_single_case_endpoint(
+    ctx: Context, case_id: str, semaphore: asyncio.Semaphore
+) -> List[Dict[str, str]]:
+    async with semaphore:
+        endpoint = compute_url(ctx.BASE_URL, f"/cases/{case_id}", params={})
+        headers = get_headers(ctx)
 
-    response = await fetch_with_retries(url=endpoint, headers=headers)
+        response = await fetch_with_retries(url=endpoint, headers=headers)
 
-    return json.dumps(response, sort_keys=True)
+        return json.dumps(response, sort_keys=True)
 
 
 async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
     intervals = compute_intervals(ctx)
-    logging.info("Computed threats intervals\n" + '\n'.join(map(lambda x: f"{str(x.start)} : {str(x.end)}", intervals)))
+    logging.info(
+        "Computed threats intervals\n"
+        + "\n".join(map(lambda x: f"{str(x.start)} : {str(x.end)}", intervals))
+    )
 
     assert len(intervals) <= 5, "Intervals more than 5"
+    semaphore = asyncio.Semaphore(ctx.NUM_CONCURRENCY)
 
     campaign_result = await asyncio.gather(
         *[
-            call_threat_campaigns_endpoint(ctx=ctx, interval=interval)
+            call_threat_campaigns_endpoint(
+                ctx=ctx, interval=interval, semaphore=semaphore
+            )
             for interval in intervals
         ]
     )
@@ -203,7 +215,9 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
 
     single_result = await asyncio.gather(
         *[
-            call_single_threat_endpoint(ctx=ctx, threat_id=threat_id)
+            call_single_threat_endpoint(
+                ctx=ctx, threat_id=threat_id, semaphore=semaphore
+            )
             for threat_id in threat_ids
         ]
     )
@@ -219,17 +233,27 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
 
 async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
     intervals = compute_intervals(ctx)
-    logging.info("Computed cases intervals\n" + '\n'.join(map(lambda x: f"{str(x.start)} : {str(x.end)}", intervals)))
+    logging.info(
+        "Computed cases intervals\n"
+        + "\n".join(map(lambda x: f"{str(x.start)} : {str(x.end)}", intervals))
+    )
 
     assert len(intervals) <= 5, "Intervals more than 5"
+    semaphore = asyncio.Semaphore(ctx.NUM_CONCURRENCY)
 
     result = await asyncio.gather(
-        *[call_cases_endpoint(ctx=ctx, interval=interval) for interval in intervals]
+        *[
+            call_cases_endpoint(ctx=ctx, interval=interval, semaphore=semaphore)
+            for interval in intervals
+        ]
     )
     case_ids = set(itertools.chain(*result))
 
     cases = await asyncio.gather(
-        *[call_single_case_endpoint(ctx=ctx, case_id=case_id) for case_id in case_ids]
+        *[
+            call_single_case_endpoint(ctx=ctx, case_id=case_id, semaphore=semaphore)
+            for case_id in case_ids
+        ]
     )
 
     for case in cases:
@@ -242,10 +266,13 @@ async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
 
 #########################
 
+
 def find_duplicates(arr):
     from collections import Counter
+
     counts = Counter(arr)
     return [item for item, count in counts.items() if count > 1]
+
 
 if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
@@ -254,13 +281,15 @@ if __name__ == "__main__":
     os.environ["ABNORMAL_LAG_ON_BACKEND_SEC"] = "10"
     os.environ["ABNORMAL_FREQUENCY_MIN"] = "1"
     os.environ["ABNORMAL_LIMIT_MIN"] = "2"
-    
+
     stored_time = datetime.now() - timedelta(minutes=3)
     output_queue = asyncio.Queue()
     try:
         while True:
             ctx = get_context(stored_date_time=stored_time.strftime(TIME_FORMAT))
-            logging.info(f"Filtering messages in range {ctx.CLIENT_FILTER_TIME_RANGE.start} : {ctx.CLIENT_FILTER_TIME_RANGE.end}")
+            logging.info(
+                f"Filtering messages in range {ctx.CLIENT_FILTER_TIME_RANGE.start} : {ctx.CLIENT_FILTER_TIME_RANGE.end}"
+            )
             asyncio.run(get_threats(ctx=ctx, output_queue=output_queue))
 
             stored_time = ctx.CURRENT_TIME
@@ -274,22 +303,20 @@ if __name__ == "__main__":
     while not output_queue.empty():
         current = output_queue.get_nowait()
         print(current)
-        idlist.append(current[1]['abxMessageId'])
-
+        idlist.append(current[1]["abxMessageId"])
 
     idset = set(idlist)
     maxid = max(idlist)
     duplicates = find_duplicates(idlist)
-    missedids = list(filter(lambda x: x not in idset,list(range(1, maxid + 1))))
-
+    missedids = list(filter(lambda x: x not in idset, list(range(1, maxid + 1))))
 
     print("\n\n\nSummary of the operation")
 
     print("Ingested values", idlist)
     print(f"Max ID: {maxid}")
     print(f"Duplicates: {duplicates}")
-    print(f"Missed IDs: {missedids}" )
+    print(f"Missed IDs: {missedids}")
 
     assert len(idset) == len(idlist), "Duplicates exist"
-    assert len(duplicates) == 0, "There are duplicates"    
-    assert len(missedids) == 0, "There are missed IDs"    
+    assert len(duplicates) == 0, "There are duplicates"
+    assert len(missedids) == 0, "There are missed IDs"
