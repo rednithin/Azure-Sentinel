@@ -1,303 +1,24 @@
 import json
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 import aiohttp
 import logging
 import asyncio
 import os
 from datetime import datetime, timedelta
-from typing import Dict, Any
-from asyncio import Queue
+import itertools
+from typing import Dict, List
 from utils import (
-    TimeRange,
-    FilterTimeRange,
+    OptionalEndTimeRange,
     FilterParam,
     MAP_RESOURCE_TO_LOGTYPE,
     Resource,
-    assert_time_range,
-    assert_filter_range,
     TIME_FORMAT,
-    TIME_FORMAT_WITHMS,
     compute_intervals,
-    EnvVariables
+    Context,
+    get_context,
+    try_str_to_datetime,
 )
 import time
-
-
-class AbnromalSoarAPI:
-    env: EnvVariables
-
-    def __init__(self, env: EnvVariables) -> None:
-        self.env = env
-
-    def get_header(self):
-        """
-        returns header for all HTTP requests to Abnormal Security's API
-        """
-        return {
-            "Authorization": f"Bearer {self.env.API_TOKEN}",
-            "Soar-Integration-Origin": "AZURE SENTINEL",
-            "Azure-Sentinel-Version": "2024-09-15",
-        }
-
-    def _get_query_params(
-        self, filter_param: FilterParam, filter_range: FilterTimeRange
-    ) -> Dict[str, str]:
-        assert_filter_range(filter_range)
-        gte_time, lte_time = filter_range.start, filter_range.end
-
-        filter_string = f"{filter_param.name}"
-        if gte_time:
-            filter_string += " " + f"gte {gte_time.strftime(TIME_FORMAT)}"
-        if lte_time:
-            filter_string += " " + f"lte {lte_time.strftime(TIME_FORMAT)}"
-        return {
-            "filter": filter_string,
-        }
-
-    def _get_list_endpoint(self, resource: Resource, query_dict: Dict[str, str]):
-        return f"{self.env.BASEURL}/{resource.name}?{urlencode(query_dict)}"
-
-    def _get_single_endpoint(self, resource: Resource, resource_id: str):
-        return f"{self.env.BASEURL}/{resource.name}/{resource_id}"
-
-    async def _make_request(self, url, headers):
-        async with aiohttp.ClientSession(
-            timeout=aiohttp.ClientTimeout(total=30)
-        ) as session:
-            async with session.get(url, headers=headers) as response:
-                if not (200 <= response.status <= 299):
-                    raise Exception(
-                        "Error during sending events to Abnormal SOAR API. Response code: {}. Text:{}".format(
-                            response.status, await response.text()
-                        )
-                    )
-                await asyncio.sleep(1)
-                return json.loads(await response.text())
-
-    async def _send_request(self, url) -> Dict[str, Any]:
-        attempts = 1
-        while True:
-            try:
-                response_data = await self._make_request(url, self.get_header())
-            except Exception as e:
-                if attempts < 3:
-                    logging.warning(
-                        f"Error while getting data from Abnormal Soar API. Attempt:{attempts} - URL: {url}",
-                        exc_info=e,
-                    )
-                    await asyncio.sleep(3)
-                    attempts += 1
-                else:
-                    logging.error(
-                        "Abnormal Soar API request failed with error", exc_info=e
-                    )
-                    # TODO: Maybe raise an exception here and stop processing?
-                    return {}
-            else:
-                return response_data
-
-    async def _generate_resource_ids(
-        self,
-        resource: Resource,
-        filter_range: FilterTimeRange,
-        output_queue,
-        filter_param: FilterParam,
-        post_processing_func=lambda x: [x],
-    ):
-        query_dict = self._get_query_params(filter_param, filter_range)
-        nextPageNumber = 1
-        while nextPageNumber:
-            query_dict["pageNumber"] = nextPageNumber
-            response_data = await self._send_request(
-                self._get_list_endpoint(resource, query_dict)
-            )
-            total = response_data["total"]
-
-            assert (
-                total is not None
-            ), "short circuiting as total field is not present in the response"
-            logging.info(f"Total number of {resource} is: {total}")
-
-            # if not entity_date_set:
-            #     self.set_date_on_entity(context, date_filter["lte_datetime"], self.MAP_RESOURCE_TO_ENTITY_VALUE[resource])
-
-            for id in post_processing_func(response_data):
-                await output_queue.put(id)
-
-            nextPageNumber = response_data.get("nextPageNumber")
-            if not nextPageNumber:
-                break
-
-            parsedNextPageNumber = int(nextPageNumber)
-            assert (
-                parsedNextPageNumber > 2
-            ), "short circuting as we are fetching more than 2 pages"
-
-    async def _process_resource_ids(
-        self,
-        resource: Resource,
-        input_queue: Queue,
-        output_queue: Queue,
-        post_processing_func=lambda x: [x],
-    ):
-        resource_log_type = MAP_RESOURCE_TO_LOGTYPE[resource]
-        while True:
-            current_id = await input_queue.get()
-            if current_id is None:
-                break
-            try:
-                response_data = await self._send_request(
-                    self._get_single_endpoint(resource, current_id)
-                )
-                for output in post_processing_func(response_data):
-                    await output_queue.put((resource_log_type, output))
-            except Exception as e:
-                logging.error(f"Discarding enqueued resource id: {current_id}", exc_info=e)
-
-            input_queue.task_done()
-
-
-class AbnormalThreatsAPI(AbnromalSoarAPI):
-    def _extract_threat_messages(self, timerange: TimeRange):
-        def callback(threat_resp: Dict):
-            threat_id = threat_resp["threatId"]
-
-            ctx = {
-                "threat_id": threat_id,
-                "timerange": timerange,
-            }
-
-            print("GGGG RESPONSE")
-
-            filtered_messages = []
-            for message in threat_resp["messages"]:
-                message_id = message["abxMessageId"]
-                remediation_time_str = message["remediationTimestamp"]
-
-                ctx = {
-                    **ctx,
-                    "message_id": message_id,
-                    "remediation_time_str": remediation_time_str,
-                }
-
-                try:
-                    remediation_time = datetime.strptime(
-                        remediation_time_str, TIME_FORMAT_WITHMS
-                    )
-                    if (
-                        remediation_time >= timerange.start
-                        and remediation_time <= timerange.end
-                    ):
-                        filtered_messages.append(message)
-                        logging.info(
-                            f"Successfully processed message for threat: {ctx}"
-                        )
-                    else:
-                        logging.warning(f"Skipped processing message for threat: {ctx}")
-                except Exception as e:
-                    logging.error(
-                        f"Failed to process message for threat: {ctx} with error",
-                        exc_info=e,
-                    )
-
-            return filtered_messages
-
-        return callback
-
-    def _extract_threat_campaign_ids(self, threats_resp):
-        return [threat["threatId"] for threat in threats_resp.get("threats", [])]
-
-    async def get_all_threat_messages(
-        self, threats_date_filter: TimeRange, output_queue: Queue
-    ):
-        assert_time_range(threats_date_filter)
-
-        intermediate_queue = asyncio.Queue()
-        final_filter_time = TimeRange(
-            start=threats_date_filter.start - self.env.LAG_ON_BACKEND,
-            end=threats_date_filter.end - self.env.LAG_ON_BACKEND,
-        )
-
-        # Needs to be a synchronous operation from old interval -> new interval to avoid race conditions
-        for filter_range in compute_intervals(
-            timerange=threats_date_filter,
-            outage_time=self.env.OUTAGE_TIME,
-            frequency=self.env.FREQUENCY,
-            lag_on_backend=self.env.LAG_ON_BACKEND,
-        ):
-            await asyncio.create_task(
-                self._generate_resource_ids(
-                    resource=Resource.threats,
-                    filter_range=filter_range,
-                    filter_param=FilterParam.latestTimeRemediated,
-                    output_queue=intermediate_queue,
-                    post_processing_func=lambda x: self._extract_threat_campaign_ids(x),
-                ),
-            )
-
-        consumers = [
-            asyncio.create_task(
-                self._process_resource_ids(
-                    resource=Resource.threats,
-                    input_queue=intermediate_queue,
-                    output_queue=output_queue,
-                    post_processing_func=self._extract_threat_messages(
-                        timerange=final_filter_time
-                    ),
-                )
-            )
-            for _ in range(self.env.NUM_CONCURRENCY)
-        ]
-
-        await intermediate_queue.join()
-        await asyncio.gather(*consumers)
-
-        for c in consumers:
-            c.cancel()
-
-
-class AbnormalCaseAPI(AbnromalSoarAPI):
-    def extract_case_ids(cases_resp):
-        return [case["caseId"] for case in cases_resp.get("cases", [])]
-
-    async def get_all_cases(self, cases_date_filter: TimeRange, output_queue: Queue):
-        assert_time_range(cases_date_filter)
-
-        intermediate_queue = asyncio.Queue()
-
-        # Needs to be a synchronous operation from old interval -> new interval to avoid race conditions
-        for filter_range in compute_intervals(
-            timerange=cases_date_filter,
-            outage_time=self.env.OUTAGE_TIME,
-            frequency=self.env.FREQUENCY,
-            lag_on_backend=self.env.LAG_ON_BACKEND,
-        ):
-            await asyncio.create_task(
-                self._generate_resource_ids(
-                    resource=Resource.cases,
-                    filter_range=filter_range,
-                    filter_param=FilterParam.customerVisibleTime,
-                    output_queue=intermediate_queue,
-                    post_processing_func=lambda x: self.extract_case_ids(x),
-                )
-            )
-
-        consumers = [
-            asyncio.create_task(
-                self._process_resource_ids(
-                    resource=Resource.cases,
-                    input_queue=intermediate_queue,
-                    output_queue=output_queue,
-                )
-            )
-            for _ in range(self.env.NUM_CONCURRENCY)
-        ]
-
-        await asyncio.gather(*consumers)
-        await intermediate_queue.join()
-
-        for c in consumers:
-            c.cancel()
 
 
 # def set_date_on_entity(context, lte_datetime, entity_value):
@@ -306,32 +27,264 @@ class AbnormalCaseAPI(AbnromalSoarAPI):
 #         datetimeEntityId, "set", {"type": entity_value, "date": lte_datetime}
 #     )
 
-logging.getLogger().setLevel(logging.INFO)
-variables = EnvVariables(
-    API_TOKEN="empty",
-    BASEURL="http://localhost:3000",
-    FREQUENCY=timedelta(seconds=30),
-    LAG_ON_BACKEND=timedelta(seconds=10),
-    NUM_CONCURRENCY=10,
-    OUTAGE_TIME=timedelta()
-)
-threats_api = AbnormalThreatsAPI(variables)
-stored_time = datetime.now() - timedelta(minutes=5)
-queue = asyncio.Queue()
-try:
-    while True:
-        current_time = datetime.now()
 
-        asyncio.run(threats_api.get_all_threat_messages(threats_date_filter=TimeRange(start=stored_time, end=current_time), output_queue=queue))
+def get_query_params(
+    filter_param: FilterParam, interval: OptionalEndTimeRange
+) -> Dict[str, str]:
+    filter = filter_param.name
+    filter += f" gte {interval.start.strftime(TIME_FORMAT)}"
+    if interval.end is not None:
+        filter += f" lte {interval.end.strftime(TIME_FORMAT)}"
 
-        stored_time = current_time
-        logging.info("Sleeping")
-        time.sleep(30)
+    return {"filter": filter}
 
-except KeyboardInterrupt:
-    pass
 
-while True:
-    current_id = queue.get_nowait()
-    
-    print(current_id)
+def get_headers(ctx: Context) -> Dict[str, str]:
+    return {
+        "Authorization": f"Bearer {ctx.API_TOKEN}",
+        "Soar-Integration-Origin": "AZURE SENTINEL",
+        "Azure-Sentinel-Version": "2024-09-15",
+    }
+
+
+def compute_url(base_url: str, pathname: str, params: Dict[str, str]) -> str:
+    endpoint = urljoin(base_url, pathname)
+
+    params_str = urlencode(params)
+    if params_str:
+        endpoint += f"?{params_str}"
+
+    return endpoint
+
+
+async def fetch_with_retries(url, retries=3, backoff=1, timeout=10, headers=None):
+    async def fetch(session, url):
+        async with session.get(url, headers=headers, timeout=timeout) as response:
+            if 500 <= response.status < 600:
+                raise aiohttp.ClientResponseError(
+                    request_info=response.request_info,
+                    history=response.history,
+                    code=response.status,
+                    message=response.reason,
+                    headers=response.headers,
+                )
+            # response.raise_for_status()
+            return json.loads(await response.text())
+
+    async with aiohttp.ClientSession() as session:
+        for attempt in range(1, retries + 1):
+            try:
+                response = await fetch(session, url)
+                return response
+            except aiohttp.ClientResponseError as e:
+                if 500 <= e.status < 600:
+                    print(f"Attempt {attempt} failed with error: {e}")
+                    if attempt == retries:
+                        raise
+                    else:
+                        await asyncio.sleep(backoff**attempt)
+                else:
+                    raise
+            except aiohttp.ClientError as e:
+                print(f"Request failed with non-retryable error: {e}")
+                raise
+
+
+async def call_threat_campaigns_endpoint(
+    ctx: Context, interval: OptionalEndTimeRange
+) -> List[str]:
+    params = get_query_params(
+        filter_param=FilterParam.latestTimeRemediated, interval=interval
+    )
+
+    threat_campaigns = set()
+
+    nextPageNumber = 1
+    while nextPageNumber:
+        params["pageNumber"] = nextPageNumber
+        endpoint = compute_url(ctx.BASE_URL, "/threats", params)
+        headers = get_headers(ctx)
+
+        response = await fetch_with_retries(url=endpoint, headers=headers)
+        total = response["total"]
+        assert total >= 0
+
+        threat_campaigns.update(
+            [threat["threatId"] for threat in response.get("threats", [])]
+        )
+
+        nextPageNumber = response.get("nextPageNumber")
+        assert nextPageNumber is None or nextPageNumber > 0
+
+        if nextPageNumber is None or nextPageNumber > ctx.MAX_PAGE_NUMBER:
+            break
+
+    return list(threat_campaigns)
+
+
+async def call_cases_endpoint(
+    ctx: Context, interval: OptionalEndTimeRange
+) -> List[str]:
+    params = get_query_params(
+        filter_param=FilterParam.customerVisibleTime, interval=interval
+    )
+
+    case_ids = set()
+
+    nextPageNumber = 1
+    while nextPageNumber:
+        params["pageNumber"] = nextPageNumber
+        endpoint = compute_url(ctx.BASE_URL, "/cases", params)
+        headers = get_headers(ctx)
+
+        response = await fetch_with_retries(url=endpoint, headers=headers)
+        total = response["total"]
+        assert total >= 0
+
+        case_ids.update([case["caseId"] for case in response.get("cases", [])])
+
+        nextPageNumber = response.get("nextPageNumber")
+        assert nextPageNumber is None or nextPageNumber > 0
+
+        if nextPageNumber is None or nextPageNumber > ctx.MAX_PAGE_NUMBER:
+            break
+
+    return list(case_ids)
+
+
+async def call_single_threat_endpoint(
+    ctx: Context, threat_id: str
+) -> List[Dict[str, str]]:
+    endpoint = compute_url(ctx.BASE_URL, f"/threats/{threat_id}", params={})
+    headers = get_headers(ctx)
+
+    response = await fetch_with_retries(url=endpoint, headers=headers)
+
+    filtered_messages = []
+    for message in response["messages"]:
+        message_id = message["abxMessageId"]
+        remediation_time_str = message["remediationTimestamp"]
+
+        remediation_time = try_str_to_datetime(remediation_time_str)
+        if (
+            remediation_time >= ctx.CLIENT_FILTER_TIME_RANGE.start
+            and remediation_time <= ctx.CLIENT_FILTER_TIME_RANGE.end
+        ):
+            filtered_messages.append(json.dumps(message, sort_keys=True))
+            logging.info(f"Successfully processed threat message: {message_id}")
+        else:
+            logging.warning(f"Skipped processing threat message: {message_id}")
+
+    return filtered_messages
+
+
+async def call_single_case_endpoint(ctx: Context, case_id: str) -> List[Dict[str, str]]:
+    endpoint = compute_url(ctx.BASE_URL, f"/cases/{case_id}", params={})
+    headers = get_headers(ctx)
+
+    response = await fetch_with_retries(url=endpoint, headers=headers)
+
+    return json.dumps(response, sort_keys=True)
+
+
+async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
+    intervals = compute_intervals(ctx)
+    logging.info(f"Computed threats intervals {intervals}")
+
+    assert len(intervals) <= 5, "Intervals more than 5"
+
+    campaign_result = await asyncio.gather(
+        *[
+            call_threat_campaigns_endpoint(ctx=ctx, interval=interval)
+            for interval in intervals
+        ]
+    )
+    threat_ids = list(set(itertools.chain(*campaign_result)))
+
+    single_result = await asyncio.gather(
+        *[
+            call_single_threat_endpoint(ctx=ctx, threat_id=threat_id)
+            for threat_id in threat_ids
+        ]
+    )
+    messages = list(set(itertools.chain(*single_result)))
+
+    for message in messages:
+        record = (MAP_RESOURCE_TO_LOGTYPE[Resource.threats], json.loads(message))
+        logging.info(f"Inserting threat message record {record}")
+        await output_queue.put(record)
+
+    return
+
+
+async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
+    intervals = compute_intervals(ctx)
+    logging.info(f"Computed cases intervals {intervals}")
+
+    assert len(intervals) <= 5, "Intervals more than 5"
+
+    result = await asyncio.gather(
+        *[call_cases_endpoint(ctx=ctx, interval=interval) for interval in intervals]
+    )
+    case_ids = list(set(itertools.chain(*result)))
+
+    cases = await asyncio.gather(
+        *[call_single_case_endpoint(ctx=ctx, case_id=case_id) for case_id in case_ids]
+    )
+
+    for case in cases:
+        record = (MAP_RESOURCE_TO_LOGTYPE[Resource.cases], json.loads(case))
+        logging.info(f"Inserting case record {record}")
+        await output_queue.put(record)
+
+    return
+
+
+#########################
+
+def find_duplicates(arr):
+    from collections import Counter
+    counts = Counter(arr)
+    return [item for item, count in counts.items() if count > 1]
+
+if __name__ == "__main__":
+    logging.getLogger().setLevel(logging.INFO)
+    os.environ["ABNORMAL_SECURITY_REST_API_TOKEN"] = "121"
+    os.environ["API_HOST"] = "http://localhost:3000"
+    stored_time = datetime.now() - timedelta(minutes=5)
+    output_queue = asyncio.Queue()
+    try:
+        while True:
+            ctx = get_context(stored_date_time=stored_time.strftime(TIME_FORMAT))
+            asyncio.run(get_threats(ctx=ctx, output_queue=output_queue))
+
+            stored_time = ctx.TIME_RANGE.end
+            logging.info("Sleeping")
+            time.sleep(30)
+
+    except KeyboardInterrupt:
+        pass
+
+    idlist = []
+    while not output_queue.empty():
+        current = output_queue.get_nowait()
+        print(current)
+        idlist.append(current[1]['abxMessageId'])
+
+
+    idset = set(idlist)
+    maxid = max(idlist)
+    duplicates = find_duplicates(idlist)
+    missedids = list(filter(lambda x: x not in idset,list(range(1, maxid + 1))))
+
+
+    print("\n\n\nSummary of the operation")
+
+    print("Ingested values", idlist)
+    print(f"Max ID: {maxid}")
+    print(f"Duplicates: {duplicates}")
+    print(f"Missed IDs: {missedids}" )
+
+    assert len(idset) == len(idlist), "Duplicates exist"
+    assert len(duplicates) == 0, "There are duplicates"    
+    assert len(missedids) == 0, "There are missed IDs"    
