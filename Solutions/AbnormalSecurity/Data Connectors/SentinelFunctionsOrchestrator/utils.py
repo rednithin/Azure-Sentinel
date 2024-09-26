@@ -131,7 +131,7 @@ def get_context(stored_date_time: str) -> Context:
     LAG_ON_BACKEND = timedelta(seconds=int(os.environ.get("ABNORMAL_LAG_ON_BACKEND_SEC", "30")))
     FREQUENCY = timedelta(minutes=int(os.environ.get("ABNORMAL_FREQUENCY_MIN", "5")))
     LIMIT = timedelta(minutes=int(os.environ.get("ABNORMAL_LIMIT_MIN", "6")))
-    NUM_CONCURRENCY = int(os.environ.get("ABNORMAL_NUM_CONCURRENCY", "10"))
+    NUM_CONCURRENCY = int(os.environ.get("ABNORMAL_NUM_CONCURRENCY", "5"))
     MAX_PAGE_NUMBER = int(os.environ.get("ABNORMAL_MAX_PAGE_NUMBER", "3"))
     
     STORED_TIME = try_str_to_datetime(stored_date_time)
