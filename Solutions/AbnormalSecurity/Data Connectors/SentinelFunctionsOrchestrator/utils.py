@@ -53,6 +53,8 @@ class Context(BaseModel):
     API_TOKEN: str
     TIME_RANGE: TimeRange
     CLIENT_FILTER_TIME_RANGE: TimeRange
+    STORED_TIME: datetime
+    CURRENT_TIME: datetime
 
 class Resource(Enum):
     threats = 0
@@ -124,11 +126,11 @@ def compute_intervals(ctx: Context) -> List[OptionalEndTimeRange]:
 def get_context(stored_date_time: str) -> Context:
     BASE_URL = os.environ.get("API_HOST", "https://api.abnormalplatform.com/v1")
     API_TOKEN = os.environ['ABNORMAL_SECURITY_REST_API_TOKEN']
-    LAG_ON_BACKEND = timedelta(seconds=int(os.environ.get("LAG_ON_BACKEND", "30")))
-    OUTAGE_TIME = timedelta(minutes=int(os.environ.get("OUTAGE_TIME", "15")))
-    NUM_CONCURRENCY = int(os.environ.get("NUM_CONCURRENCY", "10"))
-    MAX_PAGE_NUMBER = int(os.environ.get("MAX_PAGE_NUMBER", "3"))
-    FREQUENCY = timedelta(minutes=5)
+    OUTAGE_TIME = timedelta(minutes=int(os.environ.get("ABNORMAL_OUTAGE_TIME_MIN", "15")))
+    LAG_ON_BACKEND = timedelta(seconds=int(os.environ.get("ABNORMAL_LAG_ON_BACKEND_SEC", "30")))
+    FREQUENCY = timedelta(minutes=int(os.environ.get("ABNORMAL_FREQUENCY_MIN", "5")))
+    NUM_CONCURRENCY = int(os.environ.get("ABNORMAL_NUM_CONCURRENCY", "10"))
+    MAX_PAGE_NUMBER = int(os.environ.get("ABNORMAL_MAX_PAGE_NUMBER", "3"))
     
     STORED_TIME = try_str_to_datetime(stored_date_time)
     CURRENT_TIME = datetime.now()
@@ -144,5 +146,7 @@ def get_context(stored_date_time: str) -> Context:
         API_TOKEN=API_TOKEN,
         TIME_RANGE=TIME_RANGE,
         CLIENT_FILTER_TIME_RANGE=CLIENT_FILTER_TIME_RANGE,
-        MAX_PAGE_NUMBER=MAX_PAGE_NUMBER
+        MAX_PAGE_NUMBER=MAX_PAGE_NUMBER,
+        STORED_TIME=STORED_TIME,
+        CURRENT_TIME=CURRENT_TIME,
     )

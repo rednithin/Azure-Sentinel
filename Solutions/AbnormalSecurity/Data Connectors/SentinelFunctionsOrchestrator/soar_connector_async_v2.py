@@ -251,16 +251,19 @@ if __name__ == "__main__":
     logging.getLogger().setLevel(logging.INFO)
     os.environ["ABNORMAL_SECURITY_REST_API_TOKEN"] = "121"
     os.environ["API_HOST"] = "http://localhost:3000"
-    stored_time = datetime.now() - timedelta(minutes=5)
+    os.environ["ABNORMAL_LAG_ON_BACKEND_SEC"] = "10"
+    os.environ["ABNORMAL_FREQUENCY_MIN"] = "1"
+    
+    stored_time = datetime.now() - timedelta(minutes=3)
     output_queue = asyncio.Queue()
     try:
         while True:
             ctx = get_context(stored_date_time=stored_time.strftime(TIME_FORMAT))
             asyncio.run(get_threats(ctx=ctx, output_queue=output_queue))
 
-            stored_time = ctx.TIME_RANGE.end
+            stored_time = ctx.CURRENT_TIME
             logging.info("Sleeping")
-            time.sleep(30)
+            time.sleep(ctx.FREQUENCY.total_seconds())
 
     except KeyboardInterrupt:
         pass
