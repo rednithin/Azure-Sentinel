@@ -1,7 +1,8 @@
 from datetime import datetime, timedelta
 from typing import NamedTuple
 from enum import Enum
-from typing import List
+from typing import List, TypedDict
+import os
 
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 TIME_FORMAT_WITHMS = "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -100,3 +101,28 @@ def compute_intervals(timerange: TimeRange, outage_time: timedelta, lag_on_backe
     intervals.append(FilterTimeRange(start, None))
 
     return intervals
+
+class EnvVariables(TypedDict):
+    API_HOST: str
+    LAG_ON_BACKEND: timedelta
+    OUTAGE_TIME: timedelta
+    NUM_CONCURRENCY: timedelta
+    FREQUENCY: timedelta
+    BASEURL: str
+
+def get_env_variables() -> EnvVariables:
+    API_HOST = os.environ.get("API_HOST", "https://api.abnormalplatform.com/v1")
+    LAG_ON_BACKEND = timedelta(seconds=int(os.environ.get("LAG_ON_BACKEND", "30")))
+    OUTAGE_TIME = timedelta(minutes=int(os.environ.get("OUTAGE_TIME", "15")))
+    NUM_CONCURRENCY = timedelta(minutes=int(os.environ.get("NUM_CONCURRENCY", "10")))
+    FREQUENCY = timedelta(minutes=5)
+    BASEURL = API_HOST
+
+    return EnvVariables(
+        API_HOST=API_HOST,
+        LAG_ON_BACKEND=LAG_ON_BACKEND,
+        OUTAGE_TIME=OUTAGE_TIME,
+        NUM_CONCURRENCY=NUM_CONCURRENCY,
+        FREQUENCY=FREQUENCY,
+        BASEURL=BASEURL,
+    )

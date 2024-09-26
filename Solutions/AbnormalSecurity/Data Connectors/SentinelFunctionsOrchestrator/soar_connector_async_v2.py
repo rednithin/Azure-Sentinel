@@ -17,19 +17,14 @@ from utils import (
     assert_filter_range,
     TIME_FORMAT_WITHMS,
     compute_intervals,
+    EnvVariables
 )
-
-API_HOST = os.environ.get("API_HOST", "https://api.abnormalplatform.com/v1")
-LAG_ON_BACKEND = timedelta(seconds=int(os.environ.get("LAG_ON_BACKEND", "30")))
-OUTAGE_TIME = timedelta(minutes=int(os.environ.get("OUTAGE_TIME", "15")))
-NUM_CONCURRENCY = timedelta(minutes=int(os.environ.get("NUM_CONCURRENCY", "10")))
-FREQUENCY = timedelta(minutes=5)
-BASEURL = API_HOST
 
 
 class AbnromalSoarAPI:
-    def __init__(self, api_key) -> None:
+    def __init__(self, api_key: str, env: EnvVariables) -> None:
         self.api_key = api_key
+        self.env = env
 
     def get_header(self):
         """
@@ -57,10 +52,10 @@ class AbnromalSoarAPI:
         }
 
     def get_list_endpoint(self, resource: Resource, query_dict: Dict[str, str]):
-        return f"{BASEURL}/{resource.name}?{urlencode(query_dict)}"
+        return f"{self.env.BASEURL}/{resource.name}?{urlencode(query_dict)}"
 
     def get_single_endpoint(self, resource: Resource, resource_id: str):
-        return f"{BASEURL}/{resource.name}/{resource_id}"
+        return f"{self.env.BASEURL}/{resource.name}/{resource_id}"
 
     async def make_request(self, url, headers):
         async with aiohttp.ClientSession(
@@ -211,16 +206,16 @@ class AbnormalThreatsAPI(AbnromalSoarAPI):
 
         intermediate_queue = asyncio.Queue()
         final_filter_time = TimeRange(
-            threats_date_filter.start - LAG_ON_BACKEND,
-            threats_date_filter.end - LAG_ON_BACKEND,
+            threats_date_filter.start - self.env.LAG_ON_BACKEND,
+            threats_date_filter.end - self.env.LAG_ON_BACKEND,
         )
 
         # Needs to be a synchronous operation from old interval -> new interval to avoid race conditions
         for filter_range in compute_intervals(
             timerange=threats_date_filter,
-            outage_time=OUTAGE_TIME,
-            frequency=FREQUENCY,
-            lag_on_backend=LAG_ON_BACKEND,
+            outage_time=self.env.OUTAGE_TIME,
+            frequency=self.env.FREQUENCY,
+            lag_on_backend=self.env.LAG_ON_BACKEND,
         ):
             await asyncio.create_task(
                 self.generate_resource_ids(
@@ -243,7 +238,7 @@ class AbnormalThreatsAPI(AbnromalSoarAPI):
                     ),
                 )
             )
-            for _ in range(NUM_CONCURRENCY)
+            for _ in range(self.env.NUM_CONCURRENCY)
         ]
 
         await intermediate_queue.join()
@@ -265,9 +260,9 @@ class AbnormalCaseAPI(AbnromalSoarAPI):
         # Needs to be a synchronous operation from old interval -> new interval to avoid race conditions
         for filter_range in compute_intervals(
             timerange=cases_date_filter,
-            outage_time=OUTAGE_TIME,
-            frequency=FREQUENCY,
-            lag_on_backend=LAG_ON_BACKEND,
+            outage_time=self.env.OUTAGE_TIME,
+            frequency=self.env.FREQUENCY,
+            lag_on_backend=self.env.LAG_ON_BACKEND,
         ):
             await asyncio.create_task(
                 self.generate_resource_ids(
@@ -287,7 +282,7 @@ class AbnormalCaseAPI(AbnromalSoarAPI):
                     output_queue=output_queue,
                 )
             )
-            for _ in range(NUM_CONCURRENCY)
+            for _ in range(self.env.NUM_CONCURRENCY)
         ]
 
         await asyncio.gather(consumers)
