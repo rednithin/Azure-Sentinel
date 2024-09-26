@@ -199,7 +199,7 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
             for interval in intervals
         ]
     )
-    threat_ids = list(set(list(itertools.chain(*campaign_result))))
+    threat_ids = set(itertools.chain(*campaign_result))
 
     single_result = await asyncio.gather(
         *[
@@ -207,7 +207,7 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
             for threat_id in threat_ids
         ]
     )
-    messages = list(set(list(itertools.chain(*single_result))))
+    messages = set(itertools.chain(*single_result))
 
     for message in messages:
         record = (MAP_RESOURCE_TO_LOGTYPE[Resource.threats], json.loads(message))
@@ -226,7 +226,7 @@ async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
     result = await asyncio.gather(
         *[call_cases_endpoint(ctx=ctx, interval=interval) for interval in intervals]
     )
-    case_ids = list(set(list(itertools.chain(*result))))
+    case_ids = set(itertools.chain(*result))
 
     cases = await asyncio.gather(
         *[call_single_case_endpoint(ctx=ctx, case_id=case_id) for case_id in case_ids]
@@ -260,6 +260,7 @@ if __name__ == "__main__":
     try:
         while True:
             ctx = get_context(stored_date_time=stored_time.strftime(TIME_FORMAT))
+            logging.info(f"Filtering messages in range {ctx.CLIENT_FILTER_TIME_RANGE.start} : {ctx.CLIENT_FILTER_TIME_RANGE.end}")
             asyncio.run(get_threats(ctx=ctx, output_queue=output_queue))
 
             stored_time = ctx.CURRENT_TIME

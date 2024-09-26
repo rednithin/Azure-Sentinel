@@ -135,7 +135,7 @@ def get_context(stored_date_time: str) -> Context:
     MAX_PAGE_NUMBER = int(os.environ.get("ABNORMAL_MAX_PAGE_NUMBER", "3"))
     
     STORED_TIME = try_str_to_datetime(stored_date_time)
-    CURRENT_TIME = datetime.now()
+    CURRENT_TIME = try_str_to_datetime(datetime.now().strftime(TIME_FORMAT))
     TIME_RANGE = TimeRange(start=STORED_TIME, end=CURRENT_TIME)
     CLIENT_FILTER_TIME_RANGE = TimeRange(start=STORED_TIME - LAG_ON_BACKEND, end=CURRENT_TIME - LAG_ON_BACKEND)
 
