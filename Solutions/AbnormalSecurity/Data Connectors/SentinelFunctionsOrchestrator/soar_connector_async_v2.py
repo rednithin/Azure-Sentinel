@@ -41,6 +41,7 @@ def get_query_params(
 
 def get_headers(ctx: Context) -> Dict[str, str]:
     return {
+        "X-Abnormal-Trace-Id": str(ctx.TRACE_ID),
         "Authorization": f"Bearer {ctx.API_TOKEN}",
         "Soar-Integration-Origin": "AZURE SENTINEL",
         "Azure-Sentinel-Version": "2024-09-15",
