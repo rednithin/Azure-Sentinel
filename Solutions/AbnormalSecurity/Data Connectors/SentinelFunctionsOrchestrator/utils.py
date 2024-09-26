@@ -93,7 +93,7 @@ def compute_intervals(ctx: Context) -> List[OptionalEndTimeRange]:
     timerange = ctx.TIME_RANGE
     
     start_time, current_time = timerange.start, timerange.end
-    print(f"Specified timerange: {timerange}")
+    print(f"Specified timerange: {start_time} : {current_time}")
 
     if current_time - start_time > ctx.OUTAGE_TIME:
         start_time = current_time - ctx.OUTAGE_TIME
@@ -103,7 +103,7 @@ def compute_intervals(ctx: Context) -> List[OptionalEndTimeRange]:
     start = start_time.replace() - ctx.LAG_ON_BACKEND
     current = current_time.replace()
 
-    print(f"Modified timerange: {timerange}")
+    print(f"Modified timerange: {start} : {current}")
 
     assert current > start
 

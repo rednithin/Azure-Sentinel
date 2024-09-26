@@ -171,9 +171,9 @@ async def call_single_threat_endpoint(
             and remediation_time <= ctx.CLIENT_FILTER_TIME_RANGE.end
         ):
             filtered_messages.append(json.dumps(message, sort_keys=True))
-            logging.info(f"Successfully processed threat message: {message_id}")
+            logging.debug(f"Successfully processed threat message: {message_id}")
         else:
-            logging.warning(f"Skipped processing threat message: {message_id}")
+            logging.debug(f"Skipped processing threat message: {message_id}")
 
     return filtered_messages
 
@@ -189,7 +189,7 @@ async def call_single_case_endpoint(ctx: Context, case_id: str) -> List[Dict[str
 
 async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
     intervals = compute_intervals(ctx)
-    logging.info(f"Computed threats intervals {intervals}")
+    logging.info("Computed threats intervals\n" + '\n'.join(map(lambda x: f"{str(x.start)} : {str(x.end)}", intervals)))
 
     assert len(intervals) <= 5, "Intervals more than 5"
 
@@ -211,7 +211,7 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
 
     for message in messages:
         record = (MAP_RESOURCE_TO_LOGTYPE[Resource.threats], json.loads(message))
-        logging.info(f"Inserting threat message record {record}")
+        logging.debug(f"Inserting threat message record {record}")
         await output_queue.put(record)
 
     return
@@ -219,7 +219,7 @@ async def get_threats(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queu
 
 async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
     intervals = compute_intervals(ctx)
-    logging.info(f"Computed cases intervals {intervals}")
+    logging.info("Computed cases intervals\n" + '\n'.join(map(lambda x: f"{str(x.start)} : {str(x.end)}", intervals)))
 
     assert len(intervals) <= 5, "Intervals more than 5"
 
@@ -234,7 +234,7 @@ async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
 
     for case in cases:
         record = (MAP_RESOURCE_TO_LOGTYPE[Resource.cases], json.loads(case))
-        logging.info(f"Inserting case record {record}")
+        logging.debug(f"Inserting case record {record}")
         await output_queue.put(record)
 
     return
@@ -262,7 +262,7 @@ if __name__ == "__main__":
             asyncio.run(get_threats(ctx=ctx, output_queue=output_queue))
 
             stored_time = ctx.CURRENT_TIME
-            logging.info("Sleeping")
+            logging.info(f"Sleeping for {ctx.FREQUENCY.total_seconds()} seconds")
             time.sleep(ctx.FREQUENCY.total_seconds())
 
     except KeyboardInterrupt:
