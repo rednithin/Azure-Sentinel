@@ -1,8 +1,9 @@
 from datetime import datetime, timedelta
 from typing import NamedTuple
 from enum import Enum
-from typing import List, TypedDict
+from typing import List, TypedDict, Optional
 import os
+from pydantic import BaseModel
 
 TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 TIME_FORMAT_WITHMS = "%Y-%m-%dT%H:%M:%S.%fZ"
@@ -15,14 +16,14 @@ def try_str_to_datetime(time: str) -> datetime:
     return datetime.strptime(time, TIME_FORMAT_WITHMS)
 
 
-class TimeRange(NamedTuple):
+class TimeRange(BaseModel):
     start: datetime
     end: datetime
 
 
-class FilterTimeRange(NamedTuple):
+class FilterTimeRange(BaseModel):
     start: datetime
-    end: datetime | None
+    end: Optional[datetime]
 
 
 class Resource(Enum):
@@ -95,14 +96,14 @@ def compute_intervals(timerange: TimeRange, outage_time: timedelta, lag_on_backe
 
     intervals: List[FilterTimeRange] = []
     while current - start > limit:
-        intervals.append(FilterTimeRange(start, start + add))
+        intervals.append(FilterTimeRange(start=start, end=start + add))
         start = start + add
 
-    intervals.append(FilterTimeRange(start, None))
+    intervals.append(FilterTimeRange(start=start, end=None))
 
     return intervals
 
-class EnvVariables(TypedDict):
+class EnvVariables(BaseModel):
     LAG_ON_BACKEND: timedelta
     OUTAGE_TIME: timedelta
     FREQUENCY: timedelta
