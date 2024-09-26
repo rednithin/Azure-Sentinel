@@ -168,7 +168,7 @@ async def call_single_threat_endpoint(
         remediation_time = try_str_to_datetime(remediation_time_str)
         if (
             remediation_time >= ctx.CLIENT_FILTER_TIME_RANGE.start
-            and remediation_time <= ctx.CLIENT_FILTER_TIME_RANGE.end
+            and remediation_time < ctx.CLIENT_FILTER_TIME_RANGE.end
         ):
             filtered_messages.append(json.dumps(message, sort_keys=True))
             logging.debug(f"Successfully processed threat message: {message_id}")
