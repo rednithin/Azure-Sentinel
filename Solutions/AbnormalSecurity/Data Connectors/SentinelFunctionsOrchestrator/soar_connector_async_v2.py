@@ -157,7 +157,7 @@ async def call_cases_endpoint(
 
 async def call_single_threat_endpoint(
     ctx: Context, threat_id: str, semaphore: asyncio.Semaphore
-) -> List[Dict[str, str]]:
+) -> List[str]:
     async with semaphore:
         endpoint = compute_url(ctx.BASE_URL, f"/threats/{threat_id}", params={})
         headers = get_headers(ctx)
@@ -184,7 +184,7 @@ async def call_single_threat_endpoint(
 
 async def call_single_case_endpoint(
     ctx: Context, case_id: str, semaphore: asyncio.Semaphore
-) -> List[Dict[str, str]]:
+) -> str:
     async with semaphore:
         endpoint = compute_url(ctx.BASE_URL, f"/cases/{case_id}", params={})
         headers = get_headers(ctx)
