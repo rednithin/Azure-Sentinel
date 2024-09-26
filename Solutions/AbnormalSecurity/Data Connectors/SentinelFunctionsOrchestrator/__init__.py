@@ -119,8 +119,9 @@ async def fetch_and_store_abnormal_data_v2(
     )
 
     queue = asyncio.Queue()
-    threats_api = AbnormalThreatsAPI(API_TOKEN)
-    case_api = AbnormalCaseAPI(API_TOKEN)
+    variables = utils.get_env_variables()
+    threats_api = AbnormalThreatsAPI(variables)
+    case_api = AbnormalCaseAPI(variables)
 
     threat_message_producer = asyncio.create_task(
         threats_api.get_all_threat_messages(

@@ -103,26 +103,26 @@ def compute_intervals(timerange: TimeRange, outage_time: timedelta, lag_on_backe
     return intervals
 
 class EnvVariables(TypedDict):
-    API_HOST: str
     LAG_ON_BACKEND: timedelta
     OUTAGE_TIME: timedelta
-    NUM_CONCURRENCY: timedelta
     FREQUENCY: timedelta
+    NUM_CONCURRENCY: int
     BASEURL: str
+    API_TOKEN: str
 
 def get_env_variables() -> EnvVariables:
-    API_HOST = os.environ.get("API_HOST", "https://api.abnormalplatform.com/v1")
+    BASE_URL = os.environ.get("API_HOST", "https://api.abnormalplatform.com/v1")
+    API_TOKEN = os.environ['ABNORMAL_SECURITY_REST_API_TOKEN']
     LAG_ON_BACKEND = timedelta(seconds=int(os.environ.get("LAG_ON_BACKEND", "30")))
     OUTAGE_TIME = timedelta(minutes=int(os.environ.get("OUTAGE_TIME", "15")))
-    NUM_CONCURRENCY = timedelta(minutes=int(os.environ.get("NUM_CONCURRENCY", "10")))
+    NUM_CONCURRENCY = int(os.environ.get("NUM_CONCURRENCY", "10"))
     FREQUENCY = timedelta(minutes=5)
-    BASEURL = API_HOST
 
     return EnvVariables(
-        API_HOST=API_HOST,
         LAG_ON_BACKEND=LAG_ON_BACKEND,
         OUTAGE_TIME=OUTAGE_TIME,
         NUM_CONCURRENCY=NUM_CONCURRENCY,
         FREQUENCY=FREQUENCY,
-        BASEURL=BASEURL,
+        BASE_URL=BASE_URL,
+        API_TOKEN=API_TOKEN,
     )
