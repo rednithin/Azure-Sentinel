@@ -253,6 +253,7 @@ if __name__ == "__main__":
     os.environ["API_HOST"] = "http://localhost:3000"
     os.environ["ABNORMAL_LAG_ON_BACKEND_SEC"] = "10"
     os.environ["ABNORMAL_FREQUENCY_MIN"] = "1"
+    os.environ["ABNORMAL_LIMIT_MIN"] = "2"
     
     stored_time = datetime.now() - timedelta(minutes=3)
     output_queue = asyncio.Queue()
