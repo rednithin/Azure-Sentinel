@@ -119,15 +119,19 @@ async def fetch_and_store_abnormal_data_v2(
         cases_ctx = get_context(stored_date_time=stored_cases_datetime)
 
         logging.info(
-            "Current timestamps",
-            stored_threats_datetime,
-            stored_cases_datetime,
-            threats_ctx.CURRENT_TIME,
+            f"Timestamps (stored, current) \
+                threats: ({stored_threats_datetime}, {threats_ctx.CURRENT_TIME}); \
+                cases: ({stored_cases_datetime}, {cases_ctx.CURRENT_TIME})",
         )
 
         # Execute threats first and then cases as cases can error out with a 403.
         await get_threats(ctx=threats_ctx, output_queue=queue)
+
+        logging.info("Fetching threats completed")
+
         await get_cases(ctx=cases_ctx, output_queue=queue)
+
+        logging.info("Fetching cases completed")
     except Exception as e:
         logging.error("Failed to process", exc_info=e)
     finally:
@@ -136,11 +140,14 @@ async def fetch_and_store_abnormal_data_v2(
             time=threats_ctx.CURRENT_TIME.strftime(TIME_FORMAT),
             resource=Resource.threats,
         )
+        logging.info("Stored new threats date")
+
         set_date_on_entity(
             context=context,
             time=cases_ctx.CURRENT_TIME.strftime(TIME_FORMAT),
             resource=Resource.cases,
         )
+        logging.info("Stored new cases date")
 
     if should_persist_data_to_sentinel():
         logging.info("Persisting to sentinel")
