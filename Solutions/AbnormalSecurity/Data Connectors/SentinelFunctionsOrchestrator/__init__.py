@@ -17,7 +17,13 @@ import azure.durable_functions as df
 from .soar_connector_async import AbnormalSoarConnectorAsync
 from .sentinel_connector_async import AzureSentinelConnectorAsync
 from .soar_connector_async_v2 import get_cases, get_threats
-from .utils import get_context, should_use_v2_logic
+from .utils import (
+    get_context,
+    should_use_v2_logic,
+    set_date_on_entity,
+    TIME_FORMAT,
+    Resource,
+)
 
 RESET_ORCHESTRATION = os.environ.get("RESET_OPERATION", "false")
 PERSIST_TO_SENTINEL = os.environ.get("PERSIST_TO_SENTINEL", "true")
@@ -107,21 +113,34 @@ async def fetch_and_store_abnormal_data_v2(
     stored_threats_datetime: str,
     stored_cases_datetime: str,
 ):
-    threats_ctx = get_context(stored_date_time=stored_threats_datetime)
-    cases_ctx = get_context(stored_date_time=stored_cases_datetime)
-
-    logging.info(
-        "Current timestamps",
-        stored_threats_datetime,
-        stored_cases_datetime,
-        threats_ctx.CURRENT_TIME,
-    )
-
     queue = asyncio.Queue()
-    await asyncio.gather(
-        get_threats(ctx=threats_ctx, output_queue=queue),
-        get_cases(ctx=cases_ctx, output_queue=queue),
-    )
+    try:
+        threats_ctx = get_context(stored_date_time=stored_threats_datetime)
+        cases_ctx = get_context(stored_date_time=stored_cases_datetime)
+
+        logging.info(
+            "Current timestamps",
+            stored_threats_datetime,
+            stored_cases_datetime,
+            threats_ctx.CURRENT_TIME,
+        )
+
+        # Execute threats first and then cases as cases can error out with a 403.
+        await get_threats(ctx=threats_ctx, output_queue=queue)
+        await get_cases(ctx=cases_ctx, output_queue=queue)
+    except Exception as e:
+        logging.error("Failed to process", exc_info=e)
+    finally:
+        set_date_on_entity(
+            context=context,
+            time=threats_ctx.CURRENT_TIME.strftime(TIME_FORMAT),
+            resource=Resource.threats,
+        )
+        set_date_on_entity(
+            context=context,
+            time=cases_ctx.CURRENT_TIME.strftime(TIME_FORMAT),
+            resource=Resource.cases,
+        )
 
     if should_persist_data_to_sentinel():
         logging.info("Persisting to sentinel")

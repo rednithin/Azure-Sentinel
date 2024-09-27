@@ -21,13 +21,6 @@ from utils import (
 import time
 
 
-# def set_date_on_entity(context, lte_datetime, entity_value):
-#     datetimeEntityId = df.EntityId("SoarDatetimeEntity", "latestDatetime")
-#     context.signal_entity(
-#         datetimeEntityId, "set", {"type": entity_value, "date": lte_datetime}
-#     )
-
-
 def get_query_params(
     filter_param: FilterParam, interval: OptionalEndTimeRange
 ) -> Dict[str, str]:
