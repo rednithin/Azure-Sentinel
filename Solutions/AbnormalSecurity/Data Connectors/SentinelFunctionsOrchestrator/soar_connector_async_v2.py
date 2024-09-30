@@ -247,8 +247,9 @@ async def get_cases(ctx: Context, output_queue: asyncio.Queue) -> asyncio.Queue:
     )
 
     for case in cases:
-        record = (MAP_RESOURCE_TO_LOGTYPE[Resource.cases], json.loads(case))
-        visible_time = try_str_to_datetime(case["customerVisibleTime"])
+        loaded_case = json.loads(case)
+        record = (MAP_RESOURCE_TO_LOGTYPE[Resource.cases], loaded_case)
+        visible_time = try_str_to_datetime(loaded_case["customerVisibleTime"])
         if visible_time >= ctx.CLIENT_FILTER_TIME_RANGE.start and visible_time < ctx.CLIENT_FILTER_TIME_RANGE.end:
             logging.debug(f"Inserting case record {record}")
             await output_queue.put(record)
