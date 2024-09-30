@@ -37,13 +37,13 @@ if __name__ == "__main__":
             logging.info(f"Sleeping for {threats_ctx.FREQUENCY.total_seconds()} seconds\n\n")
 
 
-            cases_ctx = get_context(stored_date_time=stored_threat_time.strftime(TIME_FORMAT))
+            cases_ctx = get_context(stored_date_time=stored_cases_time.strftime(TIME_FORMAT))
             logging.info(
                 f"Filtering messages in range {cases_ctx.CLIENT_FILTER_TIME_RANGE.start} : {cases_ctx.CLIENT_FILTER_TIME_RANGE.end}"
             )
             asyncio.run(get_cases(ctx=cases_ctx, output_queue=output_cases_queue))
 
-            stored_threat_time = cases_ctx.CURRENT_TIME
+            stored_cases_time = cases_ctx.CURRENT_TIME
             logging.info(f"Sleeping for {cases_ctx.FREQUENCY.total_seconds()} seconds\n\n")
             time.sleep(cases_ctx.FREQUENCY.total_seconds())
 
