@@ -9,7 +9,7 @@ rm -rf .python_packages
 PYTHON_VERSION=$(python3 --version 2>&1)
 
 # Check if it contains "Python 3.11"
-if [[ $PYTHON_VERSION == "Python 3.11"* ]]; then
+if [[ $PYTHON_VERSION == "Python 3.9."* ]]; then
     echo "Python 3.11 is being used."
 else
     echo "Python 3.11 is NOT being used."
