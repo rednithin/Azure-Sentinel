@@ -53,10 +53,10 @@ def orchestrator_function(context: df.DurableOrchestrationContext):
 
     current_datetime = datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    logging.info(f"Current python version: {sys.version}")
+    logging.info(f"Current python version:: {sys.version}")
     if should_use_v2_logic():
         logging.info(
-            f"Using v2 fetching logic with inputs (threats, cases): ({stored_threats_datetime},{stored_cases_datetime})"
+            f"Using v2 fetching logic with inputs (threats, cases):: ({stored_threats_datetime},{stored_cases_datetime})"
         )
         asyncio.run(
             fetch_and_store_abnormal_data_v2(
@@ -69,7 +69,7 @@ def orchestrator_function(context: df.DurableOrchestrationContext):
         return
     else:
         logging.info(
-            f"Running legacy logic with inputs (threats, cases): ({stored_threats_datetime},{stored_cases_datetime})"
+            f"Running legacy logic with inputs (threats, cases):: ({stored_threats_datetime},{stored_cases_datetime})"
         )
 
     asyncio.run(transfer_abnormal_data_to_sentinel(stored_threats_datetime, stored_cases_datetime, current_datetime, context))
