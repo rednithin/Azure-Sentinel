@@ -28,7 +28,7 @@ source .python_packages/bin/activate
 pip install -r requirements.txt
 
 cd .python_packages/lib
-ln -s python3.11/site-packages site-packages
+ln -s python3.9/site-packages site-packages
 cd ../..
 
 git checkout origin/master AbnormalSecurityConn.zip
