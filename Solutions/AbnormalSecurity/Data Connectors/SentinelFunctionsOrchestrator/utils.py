@@ -140,14 +140,14 @@ def get_context(stored_date_time: str) -> Context:
     BASE_URL = os.environ.get("API_HOST", "https://api.abnormalplatform.com/v1")
     API_TOKEN = os.environ["ABNORMAL_SECURITY_REST_API_TOKEN"]
     OUTAGE_TIME = timedelta(
-        minutes=int(os.environ.get("ABNORMAL_OUTAGE_TIME_MIN", "15"))
+        minutes=int(os.environ.get("ABNORMAL_OUTAGE_TIME_MIN", "45"))
     )
     LAG_ON_BACKEND = timedelta(
         seconds=int(os.environ.get("ABNORMAL_LAG_ON_BACKEND_SEC", "30"))
     )
     FREQUENCY = timedelta(minutes=int(os.environ.get("ABNORMAL_FREQUENCY_MIN", "5")))
     LIMIT = timedelta(minutes=int(os.environ.get("ABNORMAL_LIMIT_MIN", "6")))
-    NUM_CONCURRENCY = int(os.environ.get("ABNORMAL_NUM_CONCURRENCY", "5"))
+    NUM_CONCURRENCY = int(os.environ.get("ABNORMAL_NUM_CONCURRENCY", "3"))
     MAX_PAGE_NUMBER = int(os.environ.get("ABNORMAL_MAX_PAGE_NUMBER", "3"))
 
     STORED_TIME = try_str_to_datetime(stored_date_time)
