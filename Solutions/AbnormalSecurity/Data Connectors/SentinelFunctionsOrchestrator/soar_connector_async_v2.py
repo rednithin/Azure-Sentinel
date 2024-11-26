@@ -155,26 +155,38 @@ async def call_single_threat_endpoint(
     ctx: Context, threat_id: str, semaphore: asyncio.Semaphore
 ) -> List[str]:
     async with semaphore:
-        endpoint = compute_url(ctx.BASE_URL, f"/v1/threats/{threat_id}", params={})
-        headers = get_headers(ctx)
-
-        response = await fetch_with_retries(url=endpoint, headers=headers)
-
         filtered_messages = []
-        for message in response["messages"]:
-            message_id = message["abxMessageId"]
-            remediation_time_str = message["remediationTimestamp"]
 
-            remediation_time = try_str_to_datetime(remediation_time_str)
-            if (
-                remediation_time >= ctx.CLIENT_FILTER_TIME_RANGE.start
-                and remediation_time < ctx.CLIENT_FILTER_TIME_RANGE.end
-            ):
-                filtered_messages.append(json.dumps(message, sort_keys=True))
-                logging.info(f"Successfully processed v2 threat message: {message_id}")
-            else:
-                logging.warning(f"Skipped processing v2 threat message: {message_id}")
+        nextPageNumber = 1
+        params = {}
+        while nextPageNumber:
+            params["pageNumber"] = nextPageNumber
 
+            endpoint = compute_url(ctx.BASE_URL, f"/v1/threats/{threat_id}", params={})
+            headers = get_headers(ctx)
+
+            response = await fetch_with_retries(url=endpoint, headers=headers)
+
+            for message in response["messages"]:
+                message_id = message["abxMessageId"]
+                remediation_time_str = message["remediationTimestamp"]
+
+                remediation_time = try_str_to_datetime(remediation_time_str)
+                if (
+                    remediation_time >= ctx.CLIENT_FILTER_TIME_RANGE.start
+                    and remediation_time < ctx.CLIENT_FILTER_TIME_RANGE.end
+                ):
+                    filtered_messages.append(json.dumps(message, sort_keys=True))
+                    logging.info(f"Successfully processed v2 threat message: {message_id}")
+                else:
+                    logging.warning(f"Skipped processing v2 threat message: {message_id}")
+
+            nextPageNumber = response.get("nextPageNumber")
+            assert nextPageNumber is None or nextPageNumber > 0
+
+            if nextPageNumber is None or nextPageNumber > ctx.MAX_PAGE_NUMBER:
+                break
+        
         return filtered_messages
 
 
