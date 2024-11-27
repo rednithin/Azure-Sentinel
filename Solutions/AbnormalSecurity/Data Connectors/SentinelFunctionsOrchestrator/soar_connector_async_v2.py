@@ -158,7 +158,7 @@ async def call_single_threat_endpoint(
         filtered_messages = []
 
         nextPageNumber = 1
-        params = {}
+        params = {"pageSize": ctx.SINGLE_THREAT_PAGE_SIZE}
         while nextPageNumber:
             params["pageNumber"] = nextPageNumber
 

@@ -55,6 +55,7 @@ class Context(BaseModel):
     LIMIT: timedelta
     NUM_CONCURRENCY: int
     MAX_PAGE_NUMBER: int
+    SINGLE_THREAT_PAGE_SIZE: int
     BASE_URL: str
     API_TOKEN: str
     TIME_RANGE: TimeRange
@@ -149,6 +150,7 @@ def get_context(stored_date_time: str) -> Context:
     LIMIT = timedelta(minutes=int(os.environ.get("ABNORMAL_LIMIT_MIN", "6")))
     NUM_CONCURRENCY = int(os.environ.get("ABNORMAL_NUM_CONCURRENCY", "3"))
     MAX_PAGE_NUMBER = int(os.environ.get("ABNORMAL_MAX_PAGE_NUMBER", "3"))
+    SINGLE_THREAT_PAGE_SIZE = int(os.environ.get("ABNORMAL_SINGLE_THREAT_PAGE_SIZE", "40"))
 
     STORED_TIME = try_str_to_datetime(stored_date_time)
     CURRENT_TIME = try_str_to_datetime(datetime.now().strftime(TIME_FORMAT))
@@ -171,7 +173,8 @@ def get_context(stored_date_time: str) -> Context:
         CURRENT_TIME=CURRENT_TIME,
         LIMIT=LIMIT,
         TRACE_ID=uuid4(),
-        PYTHON_VERSION=sys.version
+        PYTHON_VERSION=sys.version,
+        SINGLE_THREAT_PAGE_SIZE=SINGLE_THREAT_PAGE_SIZE
     )
 
 
